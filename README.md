@@ -1,4 +1,13 @@
-# Task dashboard (`@local/dsh-automation-dashboard`)
+# Task dashboard
+
+English | [中文](README.zh.md)
+
+![Light theme](docs/dashboard-light.png)
+
+![Dark theme](docs/dashboard-dark.png)
+
+<sub>Screenshots are sample data rendered from the real component, not a live capture.</sub>
+
 
 A standalone sci-fi dashboard for the official DSH automation tasks. It adds a
 **new** left-sidebar entry and its own `main` panel; the shipped **Automation
@@ -86,7 +95,7 @@ the official **Automation tasks** panel.
 
 ## Install
 
-Requires DSH 0.2.x (developed and verified against `0.2.2-rc.5`).
+Requires DSH `>= 0.2.2-rc.3` (developed and verified against `0.2.2-rc.5`).
 
 From GitHub:
 

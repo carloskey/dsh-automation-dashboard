@@ -16,7 +16,9 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "LICENSE"
+    "README.zh.md",
+    "LICENSE",
+    "docs"
   ],
   "dsh": {
     "bundle": {
@@ -53,7 +55,7 @@
     "dashboard"
   ],
   "engines": {
-    "dsh": ">=0.2.0"
+    "dsh": ">=0.2.2-rc.3"
   },
   "scripts": {
     "test": "node test/smoke.mjs",

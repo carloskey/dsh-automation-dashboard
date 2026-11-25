@@ -47,18 +47,18 @@
 
 需要 DSH `>= 0.2.2-rc.3`（在 `0.2.2-rc.5` 上验证）。
 
+**推荐：在 GUI 里装。** 打开 **插件 → 添加插件**，粘贴
+`github:carloskey/dsh-automation-dashboard` 并确认；如果装完是未启用状态，
+在插件列表里把它启用。这一条流程会同时完成「装包」和「加入 bundle 层」，
+不需要再改任何文件。装完刷新一次页面。
+
+**命令行安装：** `dsh plugin` 只是 pnpm 的直通，还得自己把包名加进 bundle 列表：
+
 ```sh
 dsh plugin --profile web add github:carloskey/dsh-automation-dashboard
+# 再把 "@carloskey/dsh-automation-dashboard" 追加到
+# ~/.dsh/profiles/web/package.json 的 dsh.profile.bundles
 ```
-
-装完还要把包名加进 profile 的 bundle 列表，否则 patch 不会生效：
-
-```jsonc
-// ~/.dsh/profiles/web/package.json
-"dsh": { "profile": { "bundles": [ ..., "@carloskey/dsh-automation-dashboard" ] } }
-```
-
-或者在 GUI 里：**插件 → 添加插件 → 本地目录**，选中这个仓库。装完刷新一次页面。
 
 没有构建步骤、没有依赖、没有安装脚本。
 

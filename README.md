@@ -97,22 +97,19 @@ the official **Automation tasks** panel.
 
 Requires DSH `>= 0.2.2-rc.3` (developed and verified against `0.2.2-rc.5`).
 
-From GitHub:
+**Recommended — in the GUI:** open **Plugins → Add plugin**, paste
+`github:carloskey/dsh-automation-dashboard`, confirm, then enable the row if it
+lands disabled. That one flow installs the package and selects it as a bundle
+layer, so there is nothing else to do. Reload the page once.
+
+**From a shell:** `dsh plugin` only runs pnpm, so the bundle has to be selected
+as well:
 
 ```sh
 dsh plugin --profile web add github:carloskey/dsh-automation-dashboard
+# then append "@carloskey/dsh-automation-dashboard" to dsh.profile.bundles
+# in ~/.dsh/profiles/web/package.json
 ```
-
-Then add the package to the profile's bundle list, otherwise its patch never
-applies:
-
-```jsonc
-// ~/.dsh/profiles/web/package.json
-"dsh": { "profile": { "bundles": [ ..., "@carloskey/dsh-automation-dashboard" ] } }
-```
-
-Or in the GUI: **Plugins → Add plugin → local directory**, pick the checkout.
-Reload the page once; the entry appears in the left sidebar next to
-Automation tasks.
 
 No build step, no dependencies, no install script.
+

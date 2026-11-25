@@ -77,7 +77,7 @@ const tasks = [
     status: 'paused',
   },
   {
-    id: 'imsva', kind: 'rrule', title: 'PCT IMSVA自动巡检',
+    id: 'imsva', kind: 'rrule', title: '工单自动巡检',
     rrule: 'DTSTART;TZID=Asia/Shanghai:20261123T170000\nRRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8,13,17;BYMINUTE=0,30;BYSETPOS=1,4,6',
     scheduledAt: iso(now + 2 * 3600 * 1000), status: 'active',
   },

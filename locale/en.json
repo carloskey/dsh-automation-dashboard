@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Task dashboard",
+    "description": "A standalone sci-fi dashboard for the official automation tasks: status cards, a top readout bar (fired today, on-time delivery, next-run countdown) and a delivery-receipt timeline. Read only; every value comes from the official schedule service, and the Automation tasks page is left untouched."
+  }
+}

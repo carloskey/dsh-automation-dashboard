@@ -1,0 +1,6 @@
+# Inserts one plugin row. The row only mounts this package's Host half (a no-op)
+# and, through `dsh.client`, its browser half, which registers a new sidebar
+# entry plus its own `main` panel key. No shipped row is overridden.
+- insert:
+    - id: automation-dashboard
+      name: '@carloskey/dsh-automation-dashboard'

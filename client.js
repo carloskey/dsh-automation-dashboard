@@ -726,7 +726,8 @@ window.__ModuleLoader__.load({
         // an intraday cron; only a sparse rule belongs on a month axis.
         const parsed = readRRule(task)
         if (parsed === null) return monthWindow(now)
-        return rrulePerDay(parsed) >= 4 ? dayWindow(now) : monthWindow(now)
+        if (parsed.freq === 'DAILY') return dayWindow(now)
+        return rrulePerDay(parsed) > 1 ? dayWindow(now) : monthWindow(now)
       }
       if (kind === 'every') {
         const step = Number(task.everySeconds) * 1000
@@ -807,7 +808,7 @@ window.__ModuleLoader__.load({
         if (at > 0) parts[chunk.slice(0, at).toUpperCase()] = chunk.slice(at + 1)
       }
       if (parts.COUNT !== undefined) return null
-      if (parts.BYSETPOS !== undefined || parts.BYWEEKNO !== undefined || parts.BYYEARDAY !== undefined) return null
+      if (parts.BYWEEKNO !== undefined || parts.BYYEARDAY !== undefined) return null
       const freq = parts.FREQ
       if (freq !== 'DAILY' && freq !== 'WEEKLY' && freq !== 'MONTHLY' && freq !== 'YEARLY') return null
       const interval = parts.INTERVAL === undefined ? 1 : Number(parts.INTERVAL)
@@ -824,6 +825,8 @@ window.__ModuleLoader__.load({
       if (bySecond === null && parts.BYSECOND !== undefined) return null
       if (byMonthDay === null && parts.BYMONTHDAY !== undefined) return null
       if (byMonth === null && parts.BYMONTH !== undefined) return null
+      const bySetPos = parts.BYSETPOS === undefined ? null : readSignedNumbers(parts.BYSETPOS)
+      if (bySetPos === null && parts.BYSETPOS !== undefined) return null
       let until = null
       if (parts.UNTIL !== undefined) {
         const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/.exec(parts.UNTIL)
@@ -831,7 +834,7 @@ window.__ModuleLoader__.load({
         until = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]),
           Number(match[4]), Number(match[5]), Number(match[6]))
       }
-      return { zone, start, freq, interval, byDay, byHour, byMinute, bySecond, byMonthDay, byMonth, until }
+      return { zone, start, freq, interval, byDay, byHour, byMinute, bySecond, byMonthDay, byMonth, bySetPos, until }
     }
 
     /** `MO,TU,WE` to weekday numbers; null for ordinal forms this page skips. */
@@ -857,14 +860,42 @@ window.__ModuleLoader__.load({
       return out.length === 0 ? null : [...new Set(out)].sort((a, b) => a - b)
     }
 
+    /** Comma-separated non-zero integers within ±366, or null. */
+    function readSignedNumbers(text) {
+      const out = []
+      for (const raw of String(text).split(',')) {
+        const value = Number(raw.trim())
+        if (!Number.isInteger(value) || value === 0 || Math.abs(value) > 366) return null
+        out.push(value)
+      }
+      return out.length === 0 ? null : out
+    }
+
     /** How many times one rule fires inside a single day. */
     function rrulePerDay(parsed) {
       const hours = parsed.byHour === null ? 1 : parsed.byHour.length
       const minutes = parsed.byMinute === null ? 1 : parsed.byMinute.length
-      return hours * minutes
+      const candidates = hours * minutes
+      return parsed.bySetPos === null ? candidates : Math.min(candidates, parsed.bySetPos.length)
     }
 
-    /** Occurrence times one RRULE implies inside a window. */
+    /** Pick the 1-based (or negative) positions of one period's sorted set. */
+    function applySetPos(list, positions) {
+      const picked = []
+      for (const position of positions) {
+        const index = position > 0 ? position - 1 : list.length + position
+        if (index >= 0 && index < list.length) picked.push(list[index])
+      }
+      return [...new Set(picked)]
+    }
+
+    /**
+     * Occurrence times one RRULE implies inside a window.
+     *
+     * Candidates are bucketed by one recurrence period — a day for DAILY, the
+     * Monday-anchored week for WEEKLY, the month for MONTHLY, the year for
+     * YEARLY — because BYSETPOS selects inside that period, not across it.
+     */
     function expandRRule(parsed, window) {
       const { zone, start, freq, interval } = parsed
       const hours = parsed.byHour === null ? [start.hour] : parsed.byHour
@@ -874,24 +905,28 @@ window.__ModuleLoader__.load({
       const startInstant = zonedInstant(start.year, start.month, start.day, start.hour, start.minute, zone)
       const startWeekday = new Date(startWall).getUTCDay()
       const startMonday = startWall - ((startWeekday + 6) % 7) * DAY_MS_LOCAL
-      const times = []
+      const buckets = new Map()
       for (const day of wallDays(window.start, window.end, zone)) {
         const wall = Date.UTC(day.year, day.month - 1, day.day)
         if (wall < startWall) continue
         const weekday = new Date(wall).getUTCDay()
+        let period
         if (freq === 'WEEKLY') {
           const allowed = parsed.byDay === null ? [startWeekday] : parsed.byDay
           if (!allowed.includes(weekday)) continue
-          if (Math.round((wall - startMonday) / (7 * DAY_MS_LOCAL)) % interval !== 0) continue
+          period = wall - ((weekday + 6) % 7) * DAY_MS_LOCAL
+          if (Math.round((period - startMonday) / (7 * DAY_MS_LOCAL)) % interval !== 0) continue
         } else if (freq === 'DAILY') {
           if (Math.round((wall - startWall) / DAY_MS_LOCAL) % interval !== 0) continue
           if (parsed.byDay !== null && !parsed.byDay.includes(weekday)) continue
+          period = wall
         } else if (freq === 'MONTHLY') {
           const months = (day.year - start.year) * 12 + (day.month - start.month)
           if (months < 0 || months % interval !== 0) continue
           const monthDays = parsed.byMonthDay === null ? [start.day] : parsed.byMonthDay
           if (!monthDays.includes(day.day)) continue
           if (parsed.byMonth !== null && !parsed.byMonth.includes(day.month)) continue
+          period = day.year * 12 + day.month
         } else {
           const years = day.year - start.year
           if (years < 0 || years % interval !== 0) continue
@@ -899,17 +934,32 @@ window.__ModuleLoader__.load({
           if (!months.includes(day.month)) continue
           const monthDays = parsed.byMonthDay === null ? [start.day] : parsed.byMonthDay
           if (!monthDays.includes(day.day)) continue
+          period = day.year
+        }
+        let bucket = buckets.get(period)
+        if (bucket === undefined) {
+          bucket = []
+          buckets.set(period, bucket)
         }
         for (const hour of hours) {
           for (const minute of minutes) {
             for (const second of seconds) {
               const at = zonedInstant(day.year, day.month, day.day, hour, minute, zone) + second * 1000
-              if (at < window.start || at >= window.end || at < startInstant) continue
-              if (parsed.until !== null && at > parsed.until) continue
-              times.push(at)
-              if (times.length > MAX_LANE_POINTS) return { times: [], dense: true }
+              if (at < startInstant) continue
+              bucket.push(at)
             }
           }
+        }
+      }
+      const times = []
+      for (const bucket of buckets.values()) {
+        bucket.sort((a, b) => a - b)
+        const picked = parsed.bySetPos === null ? bucket : applySetPos(bucket, parsed.bySetPos)
+        for (const at of picked) {
+          if (at < window.start || at >= window.end) continue
+          if (parsed.until !== null && at > parsed.until) continue
+          times.push(at)
+          if (times.length > MAX_LANE_POINTS) return { times: [], dense: true }
         }
       }
       times.sort((a, b) => a - b)
@@ -920,8 +970,8 @@ window.__ModuleLoader__.load({
      * Occurrence times one rule implies inside a window.
      *
      * Derived, not read: the Host stores only the next committed occurrence, so
-     * this expands the stored rule around that anchor. An RRULE cannot be
-     * expanded reliably here and returns null, leaving only the official point.
+     * this expands the stored rule around that anchor. A rule this page cannot
+     * expand faithfully returns null, leaving only the official point.
      * @returns {{times: number[], dense: boolean}|null} ascending times, or a
      *   dense marker when the window holds more points than a lane can draw.
      */

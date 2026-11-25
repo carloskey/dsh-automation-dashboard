@@ -77,6 +77,11 @@ const tasks = [
     status: 'paused',
   },
   {
+    id: 'imsva', kind: 'rrule', title: 'PCT IMSVA自动巡检',
+    rrule: 'DTSTART;TZID=Asia/Shanghai:20261123T170000\nRRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8,13,17;BYMINUTE=0,30;BYSETPOS=1,4,6',
+    scheduledAt: iso(now + 2 * 3600 * 1000), status: 'active',
+  },
+  {
     id: 'ended-one', kind: 'at', title: '一次性提醒',
     scheduledAt: iso(now - 86400000),
     status: 'ended',
@@ -182,7 +187,7 @@ console.log('\nsnapshot:', JSON.stringify({
   records: snap.records.length,
   loadedAt: typeof snap.loadedAt,
 }))
-if (snap.tasks.length !== 4) throw new Error('expected 4 tasks')
+if (snap.tasks.length !== 5) throw new Error('expected 5 tasks')
 if (snap.records.length !== 3) throw new Error('expected 3 receipts, got ' + snap.records.length)
 if (!(snap.records[0].deliveredAt >= snap.records[1].deliveredAt)) throw new Error('records not newest-first')
 console.log('history requests:', calls.filter(call => call[0] === 'history').length, 'limit', calls.find(call => call[0] === 'history')[2])
@@ -244,7 +249,7 @@ console.log('lanes:', classNames.filter(c => c === 'tl-lane').length,
 if (!classNames.includes('ds-stats')) throw new Error('stats bar missing')
 if (!classNames.includes('ds-cards')) throw new Error('cards grid missing')
 if (!classNames.includes('tl-lane')) throw new Error('timeline lanes missing')
-if (classNames.filter(c => c === 'tl-lane').length !== 4) throw new Error('expected 4 lanes')
+if (classNames.filter(c => c === 'tl-lane').length !== 5) throw new Error('expected 5 lanes')
 if (classNames.filter(c => c === 'tl-group').length !== 3) throw new Error('expected 3 groups')
 
 const allText = pageTree.map(node => (node.type === undefined ? node : (typeof node.children?.[0] === 'string' ? node.children[0] : ''))).join('|')
@@ -253,7 +258,7 @@ if (/<<[a-zA-Z]+>>/.test(JSON.stringify(pageTree.map(n => n.children)))) throw n
 // Cards: statuses and rules.
 const cardNodes = nodes.filter(node => node.props.className === 'ds-card')
 console.log('\ncards:', cardNodes.map(node => node.props['data-status']).join(', '))
-if (cardNodes.length !== 4) throw new Error('expected 4 cards, got ' + cardNodes.length)
+if (cardNodes.length !== 5) throw new Error('expected 5 cards, got ' + cardNodes.length)
 if (cardNodes[0].props['data-status'] !== 'running') throw new Error('running task should sort first')
 if (!cardNodes.some(node => node.props['data-status'] === 'paused')) throw new Error('paused card missing')
 if (!cardNodes.some(node => node.props['data-status'] === 'ended')) throw new Error('ended card missing')

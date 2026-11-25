@@ -2,7 +2,7 @@
   "name": "@carloskey/dsh-automation-dashboard",
   "version": "0.1.0",
   "type": "module",
-  "description": "A read-only sci-fi dashboard for DSH automation tasks: status cards, an instrument readout bar and a grouped horizontal timeline, all read from the official schedule RPC.",
+  "description": "A standalone sci-fi dashboard for the official automation tasks: task status cards, a top readout bar (fired today, on-time delivery rate, next-run countdown) and a delivery-record timeline. Read only — every value comes from the official schedule service, and the Automation tasks page is left untouched.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

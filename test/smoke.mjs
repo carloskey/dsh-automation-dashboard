@@ -39,6 +39,7 @@ const React = {
     return hookSlots[index]
   },
   useEffect() {},
+  useLayoutEffect() {},
 }
 
 const requireStub = id => {
@@ -221,7 +222,7 @@ const pageProps = { t: snapshot.t, load: snapshot.load, subscribe: snapshot.subs
 const pageTree = renderComponent(
   findPage(),
   pageProps,
-  [snap, null, false, now, { current: true }, { current: 0 }, { current: null }, false, { current: null }],
+  [snap, null, false, now, { current: true }, { current: 0 }, { current: null }, { current: null }, { current: null }, { current: null }],
 )
 
 function findPage() {
@@ -241,13 +242,14 @@ const nodes = pageTree.filter(node => node.type !== undefined)
 const classNames = nodes.map(node => node.props.className).filter(Boolean)
 console.log('nodes:', nodes.length)
 console.log('has stats:', classNames.includes('ds-stats'))
-console.log('has cards:', classNames.includes('ds-cards'))
+console.log('has rows:', classNames.filter(c => c === 'ds-row').length, 'tracks:', classNames.filter(c => c === 'ds-rowTrack').length)
 console.log('lanes:', classNames.filter(c => c === 'tl-lane').length,
   'scans:', classNames.filter(c => c === 'tl-scan').length,
   'groups:', classNames.filter(c => c === 'tl-group').length)
 
 if (!classNames.includes('ds-stats')) throw new Error('stats bar missing')
-if (!classNames.includes('ds-cards')) throw new Error('cards grid missing')
+if (classNames.filter(c => c === 'ds-row').length !== 2) throw new Error('expected two fixed task rows')
+if (classNames.filter(c => c === 'ds-rowTrack').length !== 2) throw new Error('expected a track per row')
 if (!classNames.includes('tl-lane')) throw new Error('timeline lanes missing')
 if (classNames.filter(c => c === 'tl-lane').length !== 5) throw new Error('expected 5 lanes')
 if (classNames.filter(c => c === 'tl-group').length !== 3) throw new Error('expected 3 groups')
@@ -255,13 +257,25 @@ if (classNames.filter(c => c === 'tl-group').length !== 3) throw new Error('expe
 const allText = pageTree.map(node => (node.type === undefined ? node : (typeof node.children?.[0] === 'string' ? node.children[0] : ''))).join('|')
 if (/<<[a-zA-Z]+>>/.test(JSON.stringify(pageTree.map(n => n.children)))) throw new Error('missing locale key in render')
 
-// Cards: statuses and rules.
+// Cards: the first row holds only what is executing, the second row the rest.
+const outerNodes = nodes.filter(node => node.props.className === 'ds-cardOuter ds-rowCard')
 const cardNodes = nodes.filter(node => node.props.className === 'ds-card')
+const byRow = row => outerNodes.filter(node => node.props['data-row'] === String(row))
 console.log('\ncards:', cardNodes.map(node => node.props['data-status']).join(', '))
+console.log('row 0:', byRow(0).map(node => node.props['data-card-id']).join(', ') || '(empty)')
+console.log('row 1:', byRow(1).map(node => node.props['data-card-id']).join(', ') || '(empty)')
 if (cardNodes.length !== 5) throw new Error('expected 5 cards, got ' + cardNodes.length)
-if (cardNodes[0].props['data-status'] !== 'running') throw new Error('running task should sort first')
+if (outerNodes.length !== 5) throw new Error('expected no repeated cards on the first render')
+if (byRow(0).length !== 1) throw new Error('row 0 should hold exactly the running task')
+if (byRow(0)[0].props['data-card-id'] !== 'deploy-check') throw new Error('row 0 holds the wrong task')
+if (byRow(0)[0].props['data-running'] !== '1') throw new Error('row 0 card is not marked running')
+if (byRow(1).length !== 4) throw new Error('row 1 should hold the four idle tasks')
+if (byRow(1).some(node => node.props['data-running'] === '1')) throw new Error('row 1 holds a running card')
 if (!cardNodes.some(node => node.props['data-status'] === 'paused')) throw new Error('paused card missing')
 if (!cardNodes.some(node => node.props['data-status'] === 'ended')) throw new Error('ended card missing')
+const trackNode = nodes.find(node => node.props.className === 'ds-rowTrack')
+if (!trackNode || !/translate3d\(0px,0,0\)/.test(trackNode.props.style.transform)) throw new Error('row track should start at offset 0')
+if (trackNode.props['data-snap'] !== '0') throw new Error('row track should animate on the first render')
 
 // Timeline points: every state must come from real or derived data.
 const pointNodes = nodes.filter(node => node.props.className === 'tl-pt')

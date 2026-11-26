@@ -73,9 +73,14 @@ entry instead of a failing page.
   missed run, because retention (30 days / 200 records) cannot prove it ran.
   Paused and ended tasks show real receipts only, because they will not fire
   again.
-- **Task region** — exactly two rows of cards; further tasks scroll inside the
-  region, with a bottom fade and a header hint that appear only when it
-  overflows.
+- **Task region** — exactly two fixed rows, never a vertical scroll. The first
+  row holds what is executing right now, the second every other task; a task is
+  in exactly one row, so a state change reads as one card travelling between
+  them rather than a copy appearing while another vanishes. When a row holds
+  more cards than fit, it holds still for three seconds, then advances exactly
+  one card and loops: the cards already on screen are repeated after the real
+  ones, so the wrap has no visible seam. Focus inside a row pauses it, and a row
+  that fits its cards never moves.
 
 ## Theme
 

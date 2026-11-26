@@ -18,7 +18,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     const h = React.createElement
-    const { useCallback, useEffect, useMemo, useRef, useState } = React
+    const { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } = React
 
     /** Locale namespace owned by this plugin. */
     const NS = 'automation.dashboard'
@@ -36,6 +36,16 @@ window.__ModuleLoader__.load({
     const REFRESH_MS = 60000
     /** Segments in the today-triggers gauge. */
     const TICK_COUNT = 20
+    /** Fixed card width and gap of the task rows; the step maths and the CSS share them. */
+    const TASK_CARD_W = 268
+    const TASK_CARD_GAP = 12
+    /** A row holds still this long, then advances exactly one card. */
+    const TASK_ROW_HOLD_MS = 3000
+    const TASK_ROW_SLIDE_MS = 620
+    /** One cycle: the hold plus the slide, so the still time stays a full 3 s. */
+    const TASK_ROW_CYCLE_MS = TASK_ROW_HOLD_MS + TASK_ROW_SLIDE_MS
+    /** Duration of a card easing from its old row position into the new one. */
+    const TASK_FLIP_MS = 460
 
     // ---------------------------------------------------------------- copy ---
 
@@ -83,7 +93,11 @@ window.__ModuleLoader__.load({
       lgBand: '高频合并',
       lgUnknown: '未确认（超出回执保留）',
       taskCountUnit: '共 {n} 个',
-      scrollHint: '超过两行时内部滚动 ↓',
+      rowRunning: '正在运行',
+      rowAll: '其他任务',
+      rowRunningEmpty: '当前没有正在运行的任务',
+      rowEmpty: '没有其他任务',
+      rowCycleHint: '停留 3 秒后切换',
       hdrTask: '任务',
       hdrLag: '送达延迟',
       hdrVerdict: '判定',
@@ -159,7 +173,11 @@ window.__ModuleLoader__.load({
       lgBand: 'Dense lane',
       lgUnknown: 'Unconfirmed (past retention)',
       taskCountUnit: '{n} total',
-      scrollHint: 'Scrolls past two rows ↓',
+      rowRunning: 'Running now',
+      rowAll: 'Other tasks',
+      rowRunningEmpty: 'Nothing is running right now',
+      rowEmpty: 'No other tasks',
+      rowCycleHint: 'Holds 3 s, then advances',
       hdrTask: 'Task',
       hdrLag: 'Delivery lag',
       hdrVerdict: 'Verdict',
@@ -200,7 +218,6 @@ window.__ModuleLoader__.load({
       '--ds-line-3:rgba(58,96,154,.36);--ds-line-soft:rgba(58,96,154,.09);',
       '--ds-card-1:rgba(255,255,255,.94);--ds-card-2:rgba(247,251,255,.92);',
       '--ds-panel-1:rgba(255,255,255,.82);--ds-panel-2:rgba(245,250,255,.62);',
-      '--ds-fade-0:rgba(243,247,253,0);--ds-fade-1:rgba(243,247,253,.95);',
       '--ds-t1:#102238;--ds-t2:#22374f;--ds-t3:#4a617d;--ds-t4:#687d99;',
       '--ds-cyan:#0b7f96;--ds-amber:#96600a;--ds-green:#0b7a4e;--ds-magenta:#b3245c;--ds-slate:#5c708c;',
       '--ds-cyan-glow:rgba(11,127,150,.22);--ds-green-glow:rgba(11,122,78,.22);',
@@ -221,7 +238,6 @@ window.__ModuleLoader__.load({
       '--ds-line-3:rgba(110,170,255,.32);--ds-line-soft:rgba(110,170,255,.13);',
       '--ds-card-1:rgba(13,21,36,.94);--ds-card-2:rgba(9,14,26,.9);',
       '--ds-panel-1:rgba(12,20,34,.78);--ds-panel-2:rgba(9,15,26,.58);',
-      '--ds-fade-0:rgba(8,14,24,0);--ds-fade-1:rgba(8,14,24,.9);',
       '--ds-t1:#eaf3ff;--ds-t2:#cfe0f7;--ds-t3:#8fa3c0;--ds-t4:#7d8fab;',
       '--ds-cyan:#35e0ff;--ds-amber:#ffc266;--ds-green:#43f0a5;--ds-magenta:#ff4f9a;--ds-slate:#8296b4;',
       '--ds-cyan-glow:rgba(53,224,255,.5);--ds-green-glow:rgba(67,240,165,.8);',
@@ -285,15 +301,26 @@ window.__ModuleLoader__.load({
       '.ds-sectionCount{font-family:var(--ds-mono);font-size:10px;line-height:14px;color:var(--ds-t3)}',
       '.ds-sectionRule{flex:1;height:1px;background:linear-gradient(90deg,var(--ds-line-2),transparent)}',
 
-      '.ds-cardsWrap{position:relative}',
-      '.ds-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(256px,1fr));gap:12px;',
-      'grid-auto-rows:114px;max-height:240px;overflow-y:auto;overscroll-behavior:contain;',
-      'scrollbar-width:thin;scrollbar-color:var(--ds-line-3) transparent}',
-      '.ds-cards::-webkit-scrollbar{width:6px}',
-      '.ds-cards::-webkit-scrollbar-thumb{background:var(--ds-line-3);border-radius:3px}',
-      '.ds-cardsFade{position:absolute;left:0;right:0;bottom:0;height:26px;pointer-events:none;',
-      'background:linear-gradient(180deg,var(--ds-fade-0),var(--ds-fade-1) 72%,var(--ds-bg-2))}',
-      '.ds-scrollHint{flex:none;font-size:9.5px;line-height:14px;letter-spacing:.08em;color:var(--ds-t3);padding-left:10px}',
+      '.ds-cardsWrap{position:relative;display:flex;flex-direction:column;gap:13px}',
+      '.ds-row{--ds-task-w:' + TASK_CARD_W + 'px;position:relative;min-width:0}',
+      '.ds-rowHead{display:flex;align-items:center;gap:8px;margin-bottom:7px;min-width:0}',
+      '.ds-rowLabel{display:inline-flex;align-items:center;gap:6px;font-size:9px;line-height:14px;',
+      'letter-spacing:.17em;text-transform:uppercase;color:var(--ds-t3)}',
+      '.ds-rowLabel::before{content:"";width:3px;height:3px;border-radius:50%;background:currentColor}',
+      '.ds-row[data-row="0"] .ds-rowLabel{color:var(--ds-cyan)}',
+      '.ds-rowCount{font-family:var(--ds-mono);font-size:10px;line-height:14px;color:var(--ds-t3)}',
+      '.ds-rowHint{margin-left:auto;font-size:9.5px;line-height:14px;letter-spacing:.08em;color:var(--ds-t4)}',
+      '.ds-rowViewport{position:relative;overflow:hidden}',
+      '.ds-rowViewport[data-fade="1"]{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);',
+      'mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}',
+      '.ds-rowTrack{position:relative;display:flex;gap:' + TASK_CARD_GAP + 'px;will-change:transform;',
+      'transition:transform ' + TASK_ROW_SLIDE_MS + 'ms cubic-bezier(.22,.61,.36,1)}',
+      '.ds-rowTrack[data-snap="1"]{transition:none}',
+      '.ds-rowCard{flex:0 0 var(--ds-task-w);height:114px}',
+      '.ds-rowEmpty{display:flex;align-items:center;justify-content:center;height:114px;border-radius:3px;',
+      'border:1px dashed var(--ds-line-2);color:var(--ds-t4);font-size:11px;letter-spacing:.06em}',
+      '@media (prefers-reduced-motion:reduce){.ds-rowTrack{transition:none}',
+      '.ds-rowViewport{overflow-x:auto;overflow-y:hidden}}',
       '.ds-cardOuter{--cut:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,13px 100%,0 calc(100% - 13px));',
       'position:relative;padding:1px;clip-path:var(--cut);',
       'background:var(--ds-card-line);',
@@ -1337,12 +1364,20 @@ window.__ModuleLoader__.load({
         }
       })
 
+      // The task region is two fixed rows: what is executing now, and everything
+      // else. A card is in exactly one of them, so a state change reads as one
+      // card moving between rows instead of two copies appearing.
+      const running = cards.filter(card => card.status === 'running')
+      const rest = cards.filter(card => card.status !== 'running')
+
       return {
         todayCount: today.length,
         capped: Boolean(snap && snap.capped),
         rate,
         next,
         cards,
+        running,
+        rest,
         rows,
         taskCount: tasks.length,
         loadedAt: snap ? snap.loadedAt : null,
@@ -1406,7 +1441,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function TaskCard({ card, now, t, openTasks }) {
+    function TaskCard({ card, row, clone, now, t, openTasks }) {
       const statusKey = STATUS_LABEL[card.status] || 'statusWaiting'
       const due = card.at
       const remaining = due === null ? null : due - now
@@ -1418,10 +1453,16 @@ window.__ModuleLoader__.load({
       } else if (card.lastAt !== null) {
         relText = t('updated') + ' ' + dayClock(card.lastAt)
       }
-      const linked = typeof openTasks === 'function'
+      // A repeated card only fills the loop seam: it carries no identity and no
+      // handlers, so the animation registry and the pointer never see it twice.
+      const linked = !clone && typeof openTasks === 'function'
       const open = () => { try { openTasks() } catch (failure) { /* panel unavailable */ } }
       return h('div', {
-        className: 'ds-cardOuter',
+        className: 'ds-cardOuter ds-rowCard',
+        'data-card-id': clone ? undefined : card.id,
+        'data-row': String(row),
+        'data-clone': clone ? '1' : '0',
+        'aria-hidden': clone ? 'true' : undefined,
         'data-running': card.status === 'running' ? '1' : '0',
         'data-linkable': linked ? '1' : '0',
         role: linked ? 'button' : undefined,
@@ -1452,12 +1493,147 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function SectionHead({ title, count, hint, t }) {
+    function SectionHead({ title, count, t }) {
       return h('div', { className: 'ds-section' },
         h('h3', { className: 'ds-sectionTitle' }, title),
         count ? h('span', { className: 'ds-sectionCount' }, count) : null,
         h('span', { className: 'ds-sectionRule', 'aria-hidden': true }),
-        hint ? h('span', { className: 'ds-scrollHint' }, hint) : null,
+      )
+    }
+
+    /** How many fixed-width cards fit a row, and how far one step moves it. */
+    function rowMetrics(width) {
+      const step = TASK_CARD_W + TASK_CARD_GAP
+      if (!Number.isFinite(width) || width <= 0) return { visible: 0, step }
+      return { visible: Math.max(1, Math.floor((width + TASK_CARD_GAP) / step)), step }
+    }
+
+    /** Motion preference, guarded so a headless render has no media query. */
+    function prefersReducedMotion() {
+      try {
+        return typeof window !== 'undefined'
+          && typeof window.matchMedia === 'function'
+          && window.matchMedia('(prefers-reduced-motion: reduce)').matches === true
+      } catch (failure) {
+        return false
+      }
+    }
+
+    /**
+     * One fixed task row.
+     *
+     * The row never scrolls vertically: it holds still for `TASK_ROW_HOLD_MS`,
+     * then advances exactly one card. The cards already on screen are repeated
+     * after the real ones, so reaching the end of the track lands on a copy of
+     * the first card and the jump back to the start is invisible. A row that
+     * fits its cards has no repeats and no timer.
+     *
+     * @param {object} props - row index, label, cards, empty copy, clock.
+     */
+    function TaskRow({ row, label, cards, emptyText, hint, now, t, openTasks }) {
+      const [cursor, setCursor] = useState({ index: 0, snap: false })
+      const [visible, setVisible] = useState(0)
+      const [focused, setFocused] = useState(false)
+      const viewportRef = useRef(null)
+      const seenRef = useRef(null)
+      const reduced = useMemo(() => prefersReducedMotion(), [])
+      const count = cards.length
+      const step = TASK_CARD_W + TASK_CARD_GAP
+      const scrollable = visible > 0 && count > visible
+      // One card beyond the window: the viewport always shows part of the next
+      // card, and the loop seam has to repeat that one too.
+      const repeats = scrollable ? Math.min(visible + 1, count) : 0
+      const index = scrollable ? Math.min(cursor.index, count) : 0
+
+      // The row only knows how many cards it shows after it has a width.
+      useLayoutEffect(() => {
+        const element = viewportRef.current
+        if (element === null || typeof element.clientWidth !== 'number') return undefined
+        const measure = () => setVisible(rowMetrics(element.clientWidth).visible)
+        measure()
+        if (typeof ResizeObserver !== 'function') return undefined
+        const observer = new ResizeObserver(measure)
+        observer.observe(element)
+        return () => observer.disconnect()
+      }, [count])
+
+      // Hold, then step. Focus inside the row pauses it, so a keyboard user is
+      // not chasing a card that keeps sliding away.
+      useEffect(() => {
+        if (!scrollable || reduced) return undefined
+        const timer = setInterval(() => {
+          if (focused) return
+          setCursor(current => (current.index >= count ? current : { index: current.index + 1, snap: false }))
+        }, TASK_ROW_CYCLE_MS)
+        return () => clearInterval(timer)
+      }, [scrollable, reduced, focused, count])
+
+      // The repeat block is pixel-identical to the start of the track: land on
+      // it, then swap the offset with transitions off.
+      useEffect(() => {
+        if (!scrollable || cursor.index < count) return undefined
+        const timer = setTimeout(() => setCursor({ index: 0, snap: true }), TASK_ROW_SLIDE_MS + 80)
+        return () => clearTimeout(timer)
+      }, [cursor.index, count, scrollable])
+
+      useEffect(() => {
+        if (!cursor.snap || typeof requestAnimationFrame !== 'function') return undefined
+        const frame = requestAnimationFrame(() => {
+          setCursor(current => (current.snap ? { index: current.index, snap: false } : current))
+        })
+        return () => cancelAnimationFrame(frame)
+      }, [cursor])
+
+      // A card that joins the row is brought into view when it lands outside the
+      // window, so the move between rows always ends somewhere visible.
+      const idsKey = cards.map(card => card.id).join('|')
+      useLayoutEffect(() => {
+        const previous = seenRef.current
+        seenRef.current = idsKey
+        if (previous === null) return
+        const before = new Set(previous === '' ? [] : previous.split('|'))
+        const entering = cards.findIndex(card => !before.has(card.id))
+        setCursor(current => {
+          if (entering < 0) {
+            if (current.index <= count) return current
+            return { index: count, snap: true }
+          }
+          const span = Math.max(1, visible)
+          if (entering >= current.index && entering < current.index + span) return current
+          return { index: Math.min(entering, count), snap: true }
+        })
+      }, [idsKey])
+
+      const items = []
+      for (const card of cards) {
+        items.push(h(TaskCard, { key: card.id, card, row, clone: false, now, t, openTasks }))
+      }
+      for (let repeat = 0; repeat < repeats; repeat += 1) {
+        const card = cards[repeat]
+        items.push(h(TaskCard, { key: 'repeat-' + card.id, card, row, clone: true, now, t, openTasks }))
+      }
+
+      return h('div', {
+        className: 'ds-row',
+        'data-row': String(row),
+        'data-scrollable': scrollable ? '1' : '0',
+        onFocusCapture: () => setFocused(true),
+        onBlurCapture: () => setFocused(false),
+      },
+        h('div', { className: 'ds-rowHead' },
+          h('span', { className: 'ds-rowLabel' }, label),
+          h('span', { className: 'ds-rowCount' }, count > 0 ? String(count) : ''),
+          scrollable && !reduced ? h('span', { className: 'ds-rowHint' }, hint) : null,
+        ),
+        h('div', { className: 'ds-rowViewport', ref: viewportRef, 'data-fade': scrollable ? '1' : '0' },
+          count === 0
+            ? h('div', { className: 'ds-rowEmpty' }, emptyText)
+            : h('div', {
+              className: 'ds-rowTrack',
+              'data-snap': cursor.snap ? '1' : '0',
+              style: { transform: 'translate3d(' + (-index * step) + 'px,0,0)' },
+            }, items),
+        ),
       )
     }
 
@@ -1591,8 +1767,9 @@ window.__ModuleLoader__.load({
       const aliveRef = useRef(true)
       const requestRef = useRef(0)
       const burstRef = useRef(null)
-      const [scrollable, setScrollable] = useState(false)
-      const cardsRef = useRef(null)
+      const cardsWrapRef = useRef(null)
+      const layoutRef = useRef(null)
+      const pendingRef = useRef(null)
 
       /**
        * Read the catalog and its receipts.
@@ -1651,19 +1828,57 @@ window.__ModuleLoader__.load({
       const dayKey = startOfDay(now)
       const monthKey = new Date(now).getFullYear() * 12 + new Date(now).getMonth()
       const timeline = useMemo(() => buildTimeline(snap, now, t), [snap, dayKey, monthKey, t])
-      useEffect(() => {
-        const element = cardsRef.current
-        if (element === null) return undefined
-        const check = () => setScrollable(element.scrollHeight > element.clientHeight + 1)
-        check()
-        if (typeof ResizeObserver === 'function') {
-          const observer = new ResizeObserver(check)
-          observer.observe(element)
-          return () => observer.disconnect()
+      // A card that changes row is a new element under a new parent, so the
+      // browser has nothing to transition. Replay its previous box as a
+      // transform and ease that to zero: the card appears to travel between the
+      // rows. Cards that only shift sideways inside one row get the same
+      // treatment, measured against the track instead of the viewport so the
+      // carousel's own slide never reads as a move.
+      useLayoutEffect(() => {
+        const root = cardsWrapRef.current
+        if (root === null || typeof root.querySelectorAll !== 'function') return
+        if (layoutRef.current === null) layoutRef.current = new Map()
+        if (pendingRef.current === null) pendingRef.current = new Set()
+        const previous = layoutRef.current
+        const pending = pendingRef.current
+        const next = new Map()
+        const moves = []
+        for (const element of root.querySelectorAll('[data-card-id]')) {
+          const id = element.getAttribute('data-card-id')
+          const row = Number(element.getAttribute('data-row'))
+          const box = element.getBoundingClientRect()
+          const offset = element.offsetLeft
+          const before = previous.get(id)
+          next.set(id, { row, x: box.left, y: box.top, offset })
+          if (before === undefined) continue
+          if (before.row !== row) moves.push([element, before.x - box.left, before.y - box.top])
+          else if (Math.abs(before.offset - offset) > 1) moves.push([element, before.offset - offset, 0])
         }
-        window.addEventListener('resize', check)
-        return () => window.removeEventListener('resize', check)
-      }, [view.cards.length, ready])
+        layoutRef.current = next
+        if (moves.length === 0 || prefersReducedMotion()) return
+        for (const move of moves) {
+          pending.add(move[0])
+          move[0].style.transition = 'none'
+          move[0].style.transform = 'translate(' + move[1] + 'px,' + move[2] + 'px)'
+          move[0].style.zIndex = '3'
+        }
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => {
+            for (const move of moves) {
+              move[0].style.transition = 'transform ' + TASK_FLIP_MS + 'ms cubic-bezier(.22,.61,.36,1)'
+              move[0].style.transform = 'translate(0px,0px)'
+            }
+          })
+        }
+        setTimeout(() => {
+          for (const element of pending) {
+            element.style.transition = ''
+            element.style.transform = ''
+            element.style.zIndex = ''
+          }
+          pending.clear()
+        }, TASK_FLIP_MS + 90)
+      })
       const nextIn = view.next === null ? null : view.next.at - now
       // A catalog wider than the history fan-out makes today's count a floor.
       const countText = !ready ? '--' : view.capped ? t('cappedPrefix') + view.todayCount : String(view.todayCount)
@@ -1732,21 +1947,41 @@ window.__ModuleLoader__.load({
 
       const openTasks = typeof props.openTasks === 'function' ? props.openTasks : null
 
-      const cardsSection = h('div', { className: 'ds-cardsWrap' },
-        h('div', { className: 'ds-cards', ref: cardsRef },
-          view.cards.length === 0
-            ? h('div', { className: 'ds-panel' },
-              h('div', { className: 'ds-empty' }, t('emptyTasks')),
-              h('div', { className: 'ds-emptyHint' }, t('emptyTasksHint')),
-              openTasks === null ? null : h('button', {
-                type: 'button',
-                className: 'ds-link',
-                onClick: () => { try { openTasks() } catch (failure) { /* panel unavailable */ } },
-              }, t('openTasks')),
-            )
-            : view.cards.map(card => h(TaskCard, { key: card.id, card, now, t, openTasks: props.openTasks })),
-        ),
-        scrollable ? h('div', { className: 'ds-cardsFade', 'aria-hidden': true }) : null,
+      const cardsSection = h('div', { className: 'ds-cardsWrap', ref: cardsWrapRef },
+        view.cards.length === 0
+          ? h('div', { className: 'ds-panel' },
+            h('div', { className: 'ds-empty' }, t('emptyTasks')),
+            h('div', { className: 'ds-emptyHint' }, t('emptyTasksHint')),
+            openTasks === null ? null : h('button', {
+              type: 'button',
+              className: 'ds-link',
+              onClick: () => { try { openTasks() } catch (failure) { /* panel unavailable */ } },
+            }, t('openTasks')),
+          )
+          : [
+            h(TaskRow, {
+              key: 'running',
+              row: 0,
+              label: t('rowRunning'),
+              cards: view.running,
+              emptyText: t('rowRunningEmpty'),
+              hint: t('rowCycleHint'),
+              now,
+              t,
+              openTasks: props.openTasks,
+            }),
+            h(TaskRow, {
+              key: 'rest',
+              row: 1,
+              label: t('rowAll'),
+              cards: view.rest,
+              emptyText: t('rowEmpty'),
+              hint: t('rowCycleHint'),
+              now,
+              t,
+              openTasks: props.openTasks,
+            }),
+          ],
       )
 
       const recordsSection = h('div', { className: 'ds-panel' },
@@ -1796,7 +2031,6 @@ window.__ModuleLoader__.load({
             ready ? h(SectionHead, {
               title: t('tasks'),
               count: view.taskCount > 0 ? t('taskCountUnit').replace('{n}', view.taskCount) : '',
-              hint: scrollable ? t('scrollHint') : '',
               t,
             }) : null,
             ready ? cardsSection : fallback,

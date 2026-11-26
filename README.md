@@ -79,8 +79,9 @@ entry instead of a failing page.
   them rather than a copy appearing while another vanishes. When a row holds
   more cards than fit, it holds still for three seconds, then advances exactly
   one card and loops: the cards already on screen are repeated after the real
-  ones, so the wrap has no visible seam. Focus inside a row pauses it, and a row
-  that fits its cards never moves.
+  ones, so the wrap has no visible seam. A row that fits its cards never moves;
+  under a reduced-motion preference the row still advances, but each step jumps
+  into place instead of easing.
 
 ## Theme
 

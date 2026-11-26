@@ -319,8 +319,7 @@ window.__ModuleLoader__.load({
       '.ds-rowCard{flex:0 0 var(--ds-task-w);height:114px}',
       '.ds-rowEmpty{display:flex;align-items:center;justify-content:center;height:114px;border-radius:3px;',
       'border:1px dashed var(--ds-line-2);color:var(--ds-t4);font-size:11px;letter-spacing:.06em}',
-      '@media (prefers-reduced-motion:reduce){.ds-rowTrack{transition:none}',
-      '.ds-rowViewport{overflow-x:auto;overflow-y:hidden}}',
+      '@media (prefers-reduced-motion:reduce){.ds-rowTrack{transition:none}}',
       '.ds-cardOuter{--cut:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,13px 100%,0 calc(100% - 13px));',
       'position:relative;padding:1px;clip-path:var(--cut);',
       'background:var(--ds-card-line);',
@@ -1533,7 +1532,6 @@ window.__ModuleLoader__.load({
     function TaskRow({ row, label, cards, emptyText, hint, now, t, openTasks }) {
       const [cursor, setCursor] = useState({ index: 0, snap: false })
       const [visible, setVisible] = useState(0)
-      const [focused, setFocused] = useState(false)
       const viewportRef = useRef(null)
       const seenRef = useRef(null)
       const reduced = useMemo(() => prefersReducedMotion(), [])
@@ -1557,16 +1555,16 @@ window.__ModuleLoader__.load({
         return () => observer.disconnect()
       }, [count])
 
-      // Hold, then step. Focus inside the row pauses it, so a keyboard user is
-      // not chasing a card that keeps sliding away.
+      // Hold, then step. This is functional motion, not decoration: it is what
+      // lets a row show more cards than fit, so it runs whether or not the
+      // system asks for reduced motion. Reduced motion only drops the easing.
       useEffect(() => {
-        if (!scrollable || reduced) return undefined
+        if (!scrollable) return undefined
         const timer = setInterval(() => {
-          if (focused) return
           setCursor(current => (current.index >= count ? current : { index: current.index + 1, snap: false }))
         }, TASK_ROW_CYCLE_MS)
         return () => clearInterval(timer)
-      }, [scrollable, reduced, focused, count])
+      }, [scrollable, count])
 
       // The repeat block is pixel-identical to the start of the track: land on
       // it, then swap the offset with transitions off.
@@ -1617,13 +1615,11 @@ window.__ModuleLoader__.load({
         className: 'ds-row',
         'data-row': String(row),
         'data-scrollable': scrollable ? '1' : '0',
-        onFocusCapture: () => setFocused(true),
-        onBlurCapture: () => setFocused(false),
       },
         h('div', { className: 'ds-rowHead' },
           h('span', { className: 'ds-rowLabel' }, label),
           h('span', { className: 'ds-rowCount' }, count > 0 ? String(count) : ''),
-          scrollable && !reduced ? h('span', { className: 'ds-rowHint' }, hint) : null,
+          scrollable ? h('span', { className: 'ds-rowHint' }, hint) : null,
         ),
         h('div', { className: 'ds-rowViewport', ref: viewportRef, 'data-fade': scrollable ? '1' : '0' },
           count === 0

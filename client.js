@@ -39,11 +39,10 @@ window.__ModuleLoader__.load({
     /** Fixed card width and gap of the task rows; the step maths and the CSS share them. */
     const TASK_CARD_W = 268
     const TASK_CARD_GAP = 12
-    /** A row holds still this long, then advances exactly one card. */
-    const TASK_ROW_HOLD_MS = 3000
-    const TASK_ROW_SLIDE_MS = 620
-    /** One cycle: the hold plus the slide, so the still time stays a full 3 s. */
-    const TASK_ROW_CYCLE_MS = TASK_ROW_HOLD_MS + TASK_ROW_SLIDE_MS
+    /** A row holds still this long, then eases one card across. */
+    const TASK_ROW_HOLD_MS = 5000
+    /** One window change: the strip eases a full card, never cutting to blank. */
+    const TASK_ROW_GLIDE_MS = 2200
     /** Duration of a card easing from its old row position into the new one. */
     const TASK_FLIP_MS = 460
 
@@ -97,7 +96,7 @@ window.__ModuleLoader__.load({
       rowAll: '其他任务',
       rowRunningEmpty: '当前没有正在运行的任务',
       rowEmpty: '没有其他任务',
-      rowCycleHint: '停留 3 秒后切换',
+      rowCycleHint: '停留 5 秒后缓缓滑过一张',
       hdrTask: '任务',
       hdrLag: '送达延迟',
       hdrVerdict: '判定',
@@ -177,7 +176,7 @@ window.__ModuleLoader__.load({
       rowAll: 'Other tasks',
       rowRunningEmpty: 'Nothing is running right now',
       rowEmpty: 'No other tasks',
-      rowCycleHint: 'Holds 3 s, then advances',
+      rowCycleHint: 'Holds 5 s, then eases one card',
       hdrTask: 'Task',
       hdrLag: 'Delivery lag',
       hdrVerdict: 'Verdict',
@@ -310,16 +309,30 @@ window.__ModuleLoader__.load({
       '.ds-row[data-row="0"] .ds-rowLabel{color:var(--ds-cyan)}',
       '.ds-rowCount{font-family:var(--ds-mono);font-size:10px;line-height:14px;color:var(--ds-t3)}',
       '.ds-rowHint{margin-left:auto;font-size:9.5px;line-height:14px;letter-spacing:.08em;color:var(--ds-t4)}',
-      '.ds-rowViewport{position:relative;overflow:hidden}',
+      '.ds-rowViewport{position:relative;overflow:hidden;height:114px}',
       '.ds-rowViewport[data-fade="1"]{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);',
       'mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}',
-      '.ds-rowTrack{position:relative;display:flex;gap:' + TASK_CARD_GAP + 'px;will-change:transform;',
-      'transition:transform ' + TASK_ROW_SLIDE_MS + 'ms cubic-bezier(.22,.61,.36,1)}',
-      '.ds-rowTrack[data-snap="1"]{transition:none}',
+      // While a window changes, both edges soften: the card leaving dissolves
+      // under the left edge and the card arriving dissolves in at the right.
+      '.ds-row[data-transition="1"] .ds-rowViewport{',
+      '-webkit-mask-image:linear-gradient(90deg,transparent,#000 46px,#000 calc(100% - 46px),transparent);',
+      'mask-image:linear-gradient(90deg,transparent,#000 46px,#000 calc(100% - 46px),transparent)}',
+      '.ds-rowLayer{position:absolute;inset:0}',
+      // The outgoing strip stays opaque and eases left; the incoming strip rides
+      // in from the right at the same speed and fades up over it. Both move
+      // together, so the cards they share keep their pixel and only the two
+      // edges cross-fade: no blank frame, no hard cut, no double image.
+      '.ds-rowLayer[data-phase="out"]{animation:ds-row-exit ' + TASK_ROW_GLIDE_MS + 'ms cubic-bezier(.4,0,.2,1) both;',
+      'pointer-events:none}',
+      '.ds-rowLayer[data-phase="in"]{animation:ds-row-enter ' + TASK_ROW_GLIDE_MS + 'ms cubic-bezier(.4,0,.2,1) both}',
+      '@keyframes ds-row-exit{from{transform:translate3d(0,0,0)}to{transform:translate3d(calc(-1 * var(--ds-row-step)),0,0)}}',
+      '@keyframes ds-row-enter{from{opacity:0;transform:translate3d(var(--ds-row-step),0,0)}',
+      'to{opacity:1;transform:translate3d(0,0,0)}}',
+      '.ds-rowTrack{position:relative;display:flex;gap:' + TASK_CARD_GAP + 'px}',
       '.ds-rowCard{flex:0 0 var(--ds-task-w);height:114px}',
       '.ds-rowEmpty{display:flex;align-items:center;justify-content:center;height:114px;border-radius:3px;',
       'border:1px dashed var(--ds-line-2);color:var(--ds-t4);font-size:11px;letter-spacing:.06em}',
-      '@media (prefers-reduced-motion:reduce){.ds-rowTrack{transition:none}}',
+      '@media (prefers-reduced-motion:reduce){.ds-rowLayer{animation:none}}',
       '.ds-cardOuter{--cut:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,13px 100%,0 calc(100% - 13px));',
       'position:relative;padding:1px;clip-path:var(--cut);',
       'background:var(--ds-card-line);',
@@ -461,11 +474,14 @@ window.__ModuleLoader__.load({
       '@media (prefers-reduced-motion:reduce){.tl-scan{animation:none}}',
 ].join('')
 
-    if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css="dsh-automation-dashboard/page"]') === null) {
-      const tag = document.createElement('style')
+    if (typeof document !== 'undefined') {
+      const tag = document.querySelector('style[data-plugin-css="dsh-automation-dashboard/page"]')
+        || document.createElement('style')
       tag.setAttribute('data-plugin-css', 'dsh-automation-dashboard/page')
-      tag.textContent = CSS
-      document.head.appendChild(tag)
+      // A hot reload re-runs this module: replace the copy in place so a style
+      // change lands without a full page refresh.
+      if (tag.textContent !== CSS) tag.textContent = CSS
+      if (!tag.parentNode) document.head.appendChild(tag)
     }
 
     // ------------------------------------------------------------- helpers ---
@@ -1440,7 +1456,7 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function TaskCard({ card, row, clone, now, t, openTasks }) {
+    function TaskCard({ card, row, now, t, openTasks }) {
       const statusKey = STATUS_LABEL[card.status] || 'statusWaiting'
       const due = card.at
       const remaining = due === null ? null : due - now
@@ -1452,16 +1468,12 @@ window.__ModuleLoader__.load({
       } else if (card.lastAt !== null) {
         relText = t('updated') + ' ' + dayClock(card.lastAt)
       }
-      // A repeated card only fills the loop seam: it carries no identity and no
-      // handlers, so the animation registry and the pointer never see it twice.
-      const linked = !clone && typeof openTasks === 'function'
+      const linked = typeof openTasks === 'function'
       const open = () => { try { openTasks() } catch (failure) { /* panel unavailable */ } }
       return h('div', {
         className: 'ds-cardOuter ds-rowCard',
-        'data-card-id': clone ? undefined : card.id,
+        'data-card-id': card.id,
         'data-row': String(row),
-        'data-clone': clone ? '1' : '0',
-        'aria-hidden': clone ? 'true' : undefined,
         'data-running': card.status === 'running' ? '1' : '0',
         'data-linkable': linked ? '1' : '0',
         role: linked ? 'button' : undefined,
@@ -1519,18 +1531,42 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * One strip of cards at one window offset.
+     *
+     * Two of these exist for the length of a window change: the outgoing strip
+     * stays opaque and eases away while the incoming strip, already carrying the
+     * next window, rides in over it. `--ds-row-step` is the distance both travel,
+     * so a card present in both strips keeps its pixel and only the edges fade.
+     *
+     * @param {object} props - window index, step, cards, row, phase, clock.
+     */
+    function RowLayer({ index, step, cards, row, phase, now, t, openTasks }) {
+      return h('div', {
+        className: 'ds-rowLayer',
+        'data-phase': phase === null ? undefined : phase,
+        'aria-hidden': phase === 'out' ? 'true' : undefined,
+      },
+        h('div', {
+          className: 'ds-rowTrack',
+          style: { transform: 'translate3d(' + (-index * step) + 'px,0,0)' },
+        }, cards.map(card => h(TaskCard, { key: card.id, card, row, now, t, openTasks }))),
+      )
+    }
+
+    /**
      * One fixed task row.
      *
      * The row never scrolls vertically: it holds still for `TASK_ROW_HOLD_MS`,
-     * then advances exactly one card. The cards already on screen are repeated
-     * after the real ones, so reaching the end of the track lands on a copy of
-     * the first card and the jump back to the start is invisible. A row that
-     * fits its cards has no repeats and no timer.
+     * then eases one card across. The outgoing strip drifts left while the
+     * incoming strip, already carrying the next window, rides in over it at the
+     * same speed: the cards both strips share hold their pixel, so only the two
+     * edges cross-fade and the row is never blank. A row that fits its cards has
+     * no timer.
      *
      * @param {object} props - row index, label, cards, empty copy, clock.
      */
     function TaskRow({ row, label, cards, emptyText, hint, now, t, openTasks }) {
-      const [cursor, setCursor] = useState({ index: 0, snap: false })
+      const [cursor, setCursor] = useState({ index: 0, next: null })
       const [visible, setVisible] = useState(0)
       const viewportRef = useRef(null)
       const seenRef = useRef(null)
@@ -1538,10 +1574,12 @@ window.__ModuleLoader__.load({
       const count = cards.length
       const step = TASK_CARD_W + TASK_CARD_GAP
       const scrollable = visible > 0 && count > visible
-      // One card beyond the window: the viewport always shows part of the next
-      // card, and the loop seam has to repeat that one too.
-      const repeats = scrollable ? Math.min(visible + 1, count) : 0
-      const index = scrollable ? Math.min(cursor.index, count) : 0
+      // The last window keeps the final card at the right edge, so the row never
+      // steps into blank space: the index runs 0..count-visible and wraps there.
+      const lastIndex = Math.max(0, count - Math.max(1, visible))
+      const index = scrollable ? Math.min(cursor.index, lastIndex) : 0
+      const next = cursor.next === null ? null : Math.min(cursor.next, lastIndex)
+      const nextIndex = current => (current >= lastIndex ? 0 : current + 1)
 
       // The row only knows how many cards it shows after it has a width.
       useLayoutEffect(() => {
@@ -1555,32 +1593,30 @@ window.__ModuleLoader__.load({
         return () => observer.disconnect()
       }, [count])
 
-      // Hold, then step. This is functional motion, not decoration: it is what
+      // Hold, then move. This is functional motion, not decoration: it is what
       // lets a row show more cards than fit, so it runs whether or not the
-      // system asks for reduced motion. Reduced motion only drops the easing.
+      // system asks for reduced motion. Reduced motion swaps in place instead.
       useEffect(() => {
-        if (!scrollable) return undefined
-        const timer = setInterval(() => {
-          setCursor(current => (current.index >= count ? current : { index: current.index + 1, snap: false }))
-        }, TASK_ROW_CYCLE_MS)
-        return () => clearInterval(timer)
-      }, [scrollable, count])
-
-      // The repeat block is pixel-identical to the start of the track: land on
-      // it, then swap the offset with transitions off.
-      useEffect(() => {
-        if (!scrollable || cursor.index < count) return undefined
-        const timer = setTimeout(() => setCursor({ index: 0, snap: true }), TASK_ROW_SLIDE_MS + 80)
+        if (!scrollable || next !== null) return undefined
+        const timer = setTimeout(() => {
+          setCursor(current => {
+            if (current.next !== null) return current
+            if (reduced) return { index: nextIndex(current.index), next: null }
+            return { index: current.index, next: nextIndex(current.index) }
+          })
+        }, TASK_ROW_HOLD_MS)
         return () => clearTimeout(timer)
-      }, [cursor.index, count, scrollable])
+      }, [scrollable, next, cursor.index, lastIndex, reduced])
 
+      // The glide is a CSS animation; this only retires the outgoing strip once
+      // the incoming one has fully covered it.
       useEffect(() => {
-        if (!cursor.snap || typeof requestAnimationFrame !== 'function') return undefined
-        const frame = requestAnimationFrame(() => {
-          setCursor(current => (current.snap ? { index: current.index, snap: false } : current))
-        })
-        return () => cancelAnimationFrame(frame)
-      }, [cursor])
+        if (next === null) return undefined
+        const timer = setTimeout(() => {
+          setCursor(current => (current.next === null ? current : { index: current.next, next: null }))
+        }, TASK_ROW_GLIDE_MS + 60)
+        return () => clearTimeout(timer)
+      }, [next])
 
       // A card that joins the row is brought into view when it lands outside the
       // window, so the move between rows always ends somewhere visible.
@@ -1592,29 +1628,34 @@ window.__ModuleLoader__.load({
         const before = new Set(previous === '' ? [] : previous.split('|'))
         const entering = cards.findIndex(card => !before.has(card.id))
         setCursor(current => {
+          // A window change owns the strip until it settles.
+          if (current.next !== null) return current
           if (entering < 0) {
-            if (current.index <= count) return current
-            return { index: count, snap: true }
+            if (current.index <= lastIndex) return current
+            return { index: lastIndex, next: null }
           }
           const span = Math.max(1, visible)
           if (entering >= current.index && entering < current.index + span) return current
-          return { index: Math.min(entering, count), snap: true }
+          return { index: Math.min(entering, lastIndex), next: null }
         })
       }, [idsKey])
 
-      const items = []
-      for (const card of cards) {
-        items.push(h(TaskCard, { key: card.id, card, row, clone: false, now, t, openTasks }))
-      }
-      for (let repeat = 0; repeat < repeats; repeat += 1) {
-        const card = cards[repeat]
-        items.push(h(TaskCard, { key: 'repeat-' + card.id, card, row, clone: true, now, t, openTasks }))
+      const layers = []
+      if (count > 0) {
+        if (next === null) {
+          layers.push(h(RowLayer, { key: 'still', index, step, cards, row, phase: null, now, t, openTasks }))
+        } else {
+          layers.push(h(RowLayer, { key: 'out', index, step, cards, row, phase: 'out', now, t, openTasks }))
+          layers.push(h(RowLayer, { key: 'in', index: next, step, cards, row, phase: 'in', now, t, openTasks }))
+        }
       }
 
       return h('div', {
         className: 'ds-row',
         'data-row': String(row),
         'data-scrollable': scrollable ? '1' : '0',
+        'data-transition': next !== null ? '1' : '0',
+        style: { '--ds-row-step': step + 'px' },
       },
         h('div', { className: 'ds-rowHead' },
           h('span', { className: 'ds-rowLabel' }, label),
@@ -1622,14 +1663,7 @@ window.__ModuleLoader__.load({
           scrollable ? h('span', { className: 'ds-rowHint' }, hint) : null,
         ),
         h('div', { className: 'ds-rowViewport', ref: viewportRef, 'data-fade': scrollable ? '1' : '0' },
-          count === 0
-            ? h('div', { className: 'ds-rowEmpty' }, emptyText)
-            : h('div', {
-              className: 'ds-rowTrack',
-              'data-snap': cursor.snap ? '1' : '0',
-              style: { transform: 'translate3d(' + (-index * step) + 'px,0,0)' },
-            }, items),
-        ),
+          count === 0 ? h('div', { className: 'ds-rowEmpty' }, emptyText) : layers),
       )
     }
 
@@ -1835,6 +1869,13 @@ window.__ModuleLoader__.load({
         if (root === null || typeof root.querySelectorAll !== 'function') return
         if (layoutRef.current === null) layoutRef.current = new Map()
         if (pendingRef.current === null) pendingRef.current = new Set()
+        // A row mid-glide renders the same cards twice, at two offsets: those
+        // boxes are not a baseline, so drop the map and let the first still
+        // render after the glide record a fresh one.
+        if (typeof root.querySelector === 'function' && root.querySelector('[data-transition="1"]') !== null) {
+          layoutRef.current = new Map()
+          return
+        }
         const previous = layoutRef.current
         const pending = pendingRef.current
         const next = new Map()

@@ -275,7 +275,11 @@ if (!cardNodes.some(node => node.props['data-status'] === 'paused')) throw new E
 if (!cardNodes.some(node => node.props['data-status'] === 'ended')) throw new Error('ended card missing')
 const trackNode = nodes.find(node => node.props.className === 'ds-rowTrack')
 if (!trackNode || !/translate3d\(0px,0,0\)/.test(trackNode.props.style.transform)) throw new Error('row track should start at offset 0')
-if (trackNode.props['data-snap'] !== '0') throw new Error('row track should animate on the first render')
+const rowNodes = nodes.filter(node => node.props.className === 'ds-row')
+if (rowNodes.length !== 2) throw new Error('expected two rows')
+if (rowNodes.some(node => node.props['data-transition'] !== '0')) throw new Error('a row should be still on the first render')
+if (rowNodes.some(node => node.props.style['--ds-row-step'] !== '280px')) throw new Error('row step variable missing')
+if (classNames.filter(c => c === 'ds-rowLayer').length !== 2) throw new Error('expected one strip per still row')
 
 // Timeline points: every state must come from real or derived data.
 const pointNodes = nodes.filter(node => node.props.className === 'tl-pt')

@@ -77,11 +77,13 @@ entry instead of a failing page.
   row holds what is executing right now, the second every other task; a task is
   in exactly one row, so a state change reads as one card travelling between
   them rather than a copy appearing while another vanishes. When a row holds
-  more cards than fit, it holds still for three seconds, then advances exactly
-  one card and loops: the cards already on screen are repeated after the real
-  ones, so the wrap has no visible seam. A row that fits its cards never moves;
-  under a reduced-motion preference the row still advances, but each step jumps
-  into place instead of easing.
+  more cards than fit, it holds still for five seconds, then spends 2.2 s easing
+  one card left: the outgoing strip drifts out under the left edge while the
+  incoming strip fades in from the right, both moving together, so a card the
+  two strips share keeps its pixel. The change is therefore continuous — no
+  blank frame, no hard cut, no double image. A row that fits its cards never
+  moves; under a reduced-motion preference the row still advances, but swaps in
+  place without the glide.
 
 ## Theme
 
